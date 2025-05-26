@@ -1,0 +1,19 @@
+{
+  "name": "liverelay",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "A service to relay small text updates via HTTP post and web sockets ",
+  "license": "MIT",
+  "author": {
+    "name": "Gábor L Ugray",
+    "email": "gabor.reads.this@gmail.com"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+  }
+}
