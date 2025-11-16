@@ -1,24 +1,24 @@
 import express from "express";
-import bodyParser from 'body-parser';
+import bodyParser from "body-parser";
 import cors from "cors";
 import * as http from "http";
-import { WebSocketServer } from "ws";
+import {WebSocketServer} from "ws";
 
 const kPort = 5175;
-const kSocketPath = "/relay"
-const projSockets = [];
+const kSecret = "sentience";
+const kSocketPath = "/relay";
+const listenerSockets = [];
 let lastContent = null;
 let lastTimestamp = null;
 
-// This is the entry point: starts servers
-export async function run(port) {
-
+// This is the entry point: starts server
+export async function runRelay(port) {
   // Create app, server, web socket servers
   const app = express();
   app.use(cors());
   app.use(bodyParser.json());
   const server = http.createServer(app);
-  const socketServer = new WebSocketServer({ noServer: true });
+  const socketServer = new WebSocketServer({noServer: true});
 
   app.get("/", getRoot);
   app.post("/", postRoot);
@@ -29,40 +29,34 @@ export async function run(port) {
       socketServer.handleUpgrade(request, socket, head, (ws) => {
         socketServer.emit("connection", ws, request);
       });
-    }
+    } //
     else {
       socket.destroy(); // Close the connection for other paths
     }
   });
 
   socketServer.on("connection", (ws) => {
-    projSockets.push(ws);
-
+    console.log("Relay> Client connected");
+    listenerSockets.push(ws);
     ws.on("close", () => {
-      const ix = projSockets.indexOf(ws);
-      if (ix != -1) projSockets.splice(ix, 1);
-    });
-
-    ws.on("message", (msgStr) => {
-      // handleProjectorMessage(ws, JSON.parse(msgStr));
+      console.log("Relay> Client disconnected");
+      const ix = listenerSockets.indexOf(ws);
+      if (ix != -1) listenerSockets.splice(ix, 1);
     });
   });
 
   // Run
   try {
     await listen(server, port);
-    console.log(`Server is listening on port ${port}`);
-  }
-  catch (err) {
-    console.error(`Server failed to start; error:\n${err}`);
+    console.log(`Relay server is listening on port ${port}`);
+  } catch (err) {
+    console.error(`Relay server failed to start; error:\n${err}`);
   }
 }
 
 function listen(server, port) {
   return new Promise((resolve, reject) => {
-    server.listen(port)
-      .once('listening', resolve)
-      .once('error', reject);
+    server.listen(port).once("listening", resolve).once("error", reject);
   });
 }
 
@@ -78,18 +72,36 @@ function getRoot(req, response) {
     respText += sep;
   }
   respText += "Relay ready\n";
-  response.set('Content-Type', 'text/plain; charset=utf-8');
+  response.set("Content-Type", "text/plain; charset=utf-8");
   response.status(200).send(respText);
 }
 
+function truncate(str) {
+  const newline = str.indexOf("\n");
+  const end = newline >= 0 && newline < 32 ? newline : 32;
+  let res = str.slice(0, end);
+  if (res.length < str.length) res += " [...]";
+  return res;
+}
+
 function postRoot(req, response) {
+  if (!req.body.secret || req.body.secret != kSecret) {
+    console.log(`Relay> Request with missing/wrong secret: ${req.body.secret}`);
+    response.status(401).send("BAD_SECRET");
+    return;
+  }
+  const digest = truncate(req.body.command);
+  console.log(`Relay> Message from ${req.body.source}: ${digest}`);
   lastTimestamp = new Date().toISOString();
   lastContent = req.body.command;
-
-  // const outStr = JSON.stringify(msg);
-  // for (const ps of projSockets) ps.send(outStr);
-
+  for (const sck of listenerSockets) {
+    const data = {
+      content: lastContent,
+      source: req.body.source,
+    };
+    sck.send(JSON.stringify(data));
+  }
   response.status(200).send("OK");
 }
 
-void run(kPort);
+void runRelay(kPort);
